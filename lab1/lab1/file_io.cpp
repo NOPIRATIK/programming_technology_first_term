@@ -5,6 +5,8 @@
 using Clock = std::chrono::high_resolution_clock;
 using Ms = std::chrono::duration<double, std::milli>;
 
+// Reads the whole file into a string 
+// Writes elapsed time (ms) into 'ms'. Returns empty string on failure
 std::string readFile(const std::string& path, double& ms) {
     auto t0 = Clock::now();
 
@@ -23,6 +25,8 @@ std::string readFile(const std::string& path, double& ms) {
     return text;
 }
 
+// Writes summary, word counts and word positions to the output file
+// Writes elapsed time
 void writeOutput(const std::string& outPath,
     WordIndex& index,
     std::vector<std::string>& keys,

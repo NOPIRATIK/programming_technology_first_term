@@ -1,6 +1,7 @@
 #include "text_utils.h"
 #include <cctype>
 
+// Converts the given UTF-8 buffer
 void toLowerInPlace(std::string& s) {
     for (size_t i = 0; i < s.size(); ) {
         unsigned char c = (unsigned char)s[i];
@@ -16,6 +17,7 @@ void toLowerInPlace(std::string& s) {
     }
 }
 
+// Returns true if the range [p, p+len) contains at least one letter
 bool hasLetter(const char* p, size_t len) {
     for (size_t i = 0; i < len; ++i) {
         unsigned char c = (unsigned char)p[i];

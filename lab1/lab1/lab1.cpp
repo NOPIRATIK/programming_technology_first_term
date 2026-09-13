@@ -20,8 +20,7 @@
 using Clock = std::chrono::high_resolution_clock;
 using Ms = std::chrono::duration<double, std::milli>;
 
-// ---------- вспомогательное ----------
-
+// Reads a vector of integers from standard input (size + values)
 std::vector<int> inputVector() {
     size_t n;
     std::cout << "Размер массива: ";
@@ -30,20 +29,23 @@ std::vector<int> inputVector() {
     std::vector<int> v(n);
     std::cout << "Введите " << n << " чисел: ";
     for (auto& x : v) std::cin >> x;
+
+    std::cin.ignore(10000, '\n');   // discard trailing newline
     return v;
 }
 
+// Prints all elements of the vector separated by spaces.
 void printVector(const std::vector<int>& v) {
     for (int x : v) std::cout << x << " ";
     std::cout << "\n";
 }
 
-// Читает диапазон в любом формате: "1 3", "[1, 3]", "1,3", "1..3"
+// Reads a numeric range from a line in any of the formats: returns true on success, false otherwise
 bool readRange(int& lo, int& hi) {
     std::string line;
     std::getline(std::cin, line);
 
-    // все нецифровые (кроме минуса) → пробел
+    // replace every non-digit with a space
     for (char& c : line)
         if (!std::isdigit((unsigned char)c) && c != '-')
             c = ' ';
@@ -52,8 +54,7 @@ bool readRange(int& lo, int& hi) {
     return (bool)(iss >> lo >> hi);
 }
 
-// ---------- анализ текста ----------
-
+// Runs the whole text analysis pipeline and prints timing per stage
 void runWordAnalysis() {
     const char* inPath = "C:/ОРАЛЬНЫЕ_УТЕХИ/3_курс_1_семестр/programming_technology_first_term/war_and_peace.txt";
     const char* outPath = "C:/ОРАЛЬНЫЕ_УТЕХИ/3_курс_1_семестр/programming_technology_first_term/lab1_output.txt";
@@ -90,8 +91,7 @@ void runWordAnalysis() {
     std::cout << "Уникальных:       " << index.size() << "\n";
 }
 
-// ---------- меню ----------
-
+// Prints the main menu
 void printMenu() {
     std::cout << "\n========== МЕНЮ ==========\n"
         << "1. Анализ текста (Война и мир)\n"
@@ -117,7 +117,7 @@ int main() {
             std::cin.ignore(10000, '\n');
             continue;
         }
-        std::cin.ignore(10000, '\n');   // съедаем '\n' после выбора
+        std::cin.ignore(10000, '\n');   // discard trailing newline after choice
 
         if (choice == 0) break;
 
@@ -128,7 +128,6 @@ int main() {
 
         case 2: {
             std::vector<int> v = inputVector();
-            std::cin.ignore(10000, '\n');   // <-- заодно
             task3a_squarePrimes(v);
             std::cout << "Результат: ";
             printVector(v);
@@ -137,7 +136,6 @@ int main() {
 
         case 3: {
             std::vector<int> v = inputVector();
-            std::cin.ignore(10000, '\n');   // <-- заодно
             task3b_oddAscEvenDesc(v);
             std::cout << "Результат: ";
             printVector(v);
@@ -146,9 +144,6 @@ int main() {
 
         case 4: {
             std::vector<int> v = inputVector();
-
-            // ← ВОТ ЭТА СТРОКА: убираем '\n' после ввода чисел
-            std::cin.ignore(10000, '\n');
 
             int lo, hi;
             std::cout << "Диапазон (например: 1 3 или [1, 3]): ";
