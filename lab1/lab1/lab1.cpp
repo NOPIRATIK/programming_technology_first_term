@@ -1,296 +1,171 @@
 ﻿#include <iostream>
 #include <fstream>
 #include <string>
-#include <unordered_map>
 #include <vector>
-#include <algorithm>
+#include <sstream>
 #include <cctype>
 #include <clocale>
 #include <chrono>
-#include <iterator>
-#include <limits>
 
 #ifdef _WIN32
-#define NOMINMAX
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#undef min
-#undef max
-#undef tolower
-#undef toupper
 #endif
+
+#include "common.h"
+#include "file_io.h"
+#include "indexer.h"
+#include "text_utils.h"
+#include "stl_tasks.h"
 
 using Clock = std::chrono::high_resolution_clock;
 using Ms = std::chrono::duration<double, std::milli>;
 
-// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
-
-// Приведение строки к нижнему регистру (с поддержкой кириллицы UTF-8)
-void toLowerInPlace(std::string& s) {
-    for (size_t i = 0; i < s.size(); ) {
-        unsigned char c = (unsigned char)s[i];
-        if (c < 0x80) { s[i] = (char)std::tolower(c); i++; }
-        else if (c == 0xD0 && i + 1 < s.size()) {
-            unsigned char c2 = (unsigned char)s[i + 1];
-            if (c2 == 0x81) { s[i] = (char)0xD1; s[i + 1] = (char)0x91; }
-            else if (c2 >= 0x90 && c2 <= 0x9F) { s[i + 1] = (char)(c2 + 0x20); }
-            else if (c2 >= 0xA0 && c2 <= 0xAF) { s[i] = (char)0xD1; s[i + 1] = (char)(c2 - 0x20); }
-            i += 2;
-        }
-        else i++;
-    }
-}
-
-bool hasLetter(const char* p, size_t len) {
-    for (size_t i = 0; i < len; ++i) {
-        unsigned char c = (unsigned char)p[i];
-        if (std::isalpha(c)) return true;
-        if (c == 0xD0 || c == 0xD1) return true;
-    }
-    return false;
-}
-
-bool isPrime(int n) {
-    if (n <= 1) return false;
-    for (int i = 2; i * i <= n; ++i) if (n % i == 0) return false;
-    return true;
-}
-
-void printVector(const std::vector<int>& v, const std::string& title = "") {
-    if (!title.empty()) std::cout << title;
-    if (v.empty()) { std::cout << "(пусто)\n"; return; }
-    for (int x : v) std::cout << x << ' ';
-    std::cout << '\n';
-}
+// ---------- вспомогательное ----------
 
 std::vector<int> inputVector() {
-    std::vector<int> v;
-    int n, x;
-    std::cout << "Введите количество элементов: ";
+    size_t n;
+    std::cout << "Размер массива: ";
     std::cin >> n;
-    std::cout << "Введите " << n << " чисел через пробел: ";
-    for (int i = 0; i < n; ++i) { std::cin >> x; v.push_back(x); }
+
+    std::vector<int> v(n);
+    std::cout << "Введите " << n << " чисел: ";
+    for (auto& x : v) std::cin >> x;
     return v;
 }
 
-// ==================== ЯДРО ИНДЕКСАЦИИ ====================
-
-// Разбор текста → карта: слово → список позиций
-void buildIndex(const std::string& text,
-    std::unordered_map<std::string, std::vector<int>>& index,
-    int& totalWords) {
-    index.clear();
-    index.reserve(60000);
-    const char* data = text.data();
-    size_t i = 0, n = text.size();
-    int pos = 0;
-
-    while (i < n) {
-        while (i < n && (unsigned char)data[i] <= ' ') i++;
-        size_t start = i;
-        while (i < n && (unsigned char)data[i] >  ' ') i++;
-        if (start == i) continue;
-
-        size_t a = start, b = i;
-        while (a < b && std::ispunct((unsigned char)data[a]))     a++;
-        while (b > a && std::ispunct((unsigned char)data[b - 1])) b--;
-
-        if (a >= b || !hasLetter(data + a, b - a)) continue;
-
-        std::string w(data + a, b - a);
-        index[w].push_back(pos);
-        pos++;
-    }
-    totalWords = pos;
+void printVector(const std::vector<int>& v) {
+    for (int x : v) std::cout << x << " ";
+    std::cout << "\n";
 }
 
-// Получить отсортированный список ключей
-std::vector<std::string> sortedKeys(
-    const std::unordered_map<std::string, std::vector<int>>& index) {
+// Читает диапазон в любом формате: "1 3", "[1, 3]", "1,3", "1..3"
+bool readRange(int& lo, int& hi) {
+    std::string line;
+    std::getline(std::cin, line);
+
+    // все нецифровые (кроме минуса) → пробел
+    for (char& c : line)
+        if (!std::isdigit((unsigned char)c) && c != '-')
+            c = ' ';
+
+    std::istringstream iss(line);
+    return (bool)(iss >> lo >> hi);
+}
+
+// ---------- анализ текста ----------
+
+void runWordAnalysis() {
+    const char* inPath = "C:/ОРАЛЬНЫЕ_УТЕХИ/3_курс_1_семестр/programming_technology_first_term/war_and_peace.txt";
+    const char* outPath = "C:/ОРАЛЬНЫЕ_УТЕХИ/3_курс_1_семестр/programming_technology_first_term/lab1_output.txt";
+
+    auto totalStart = Clock::now();
+
+    double tRead = 0, tLower = 0, tIndex = 0, tSort = 0, tWrite = 0;
+
+    std::string text = readFile(inPath, tRead);
+    if (text.empty()) { std::cerr << "Файл не найден\n"; return; }
+
+    { auto t0 = Clock::now(); toLowerInPlace(text); tLower = Ms(Clock::now() - t0).count(); }
+
+    WordIndex index;
+    int totalWords = 0;
+    buildIndex(text, index, totalWords, tIndex);
+
     std::vector<std::string> keys;
-    keys.reserve(index.size());
-    for (auto& p : index) keys.push_back(p.first);
-    std::sort(keys.begin(), keys.end());
-    return keys;
+    sortKeys(index, keys, tSort);
+
+    writeOutput(outPath, index, keys, totalWords, tWrite);
+
+    double tTotal = Ms(Clock::now() - totalStart).count();
+
+    std::cout << "\n===== ВРЕМЯ ВЫПОЛНЕНИЯ =====\n";
+    std::cout << "Чтение файла:     " << tRead << " мс\n";
+    std::cout << "Lowercase:        " << tLower << " мс\n";
+    std::cout << "Индексация:       " << tIndex << " мс\n";
+    std::cout << "Сортировка:       " << tSort << " мс\n";
+    std::cout << "Запись в файл:    " << tWrite << " мс\n";
+    std::cout << "-----------------------------\n";
+    std::cout << "ИТОГО:            " << tTotal << " мс\n";
+    std::cout << "Всего слов:       " << totalWords << "\n";
+    std::cout << "Уникальных:       " << index.size() << "\n";
 }
 
-// ==================== ЗАДАНИЕ 1: ПОДСЧЁТ СЛОВ ====================
+// ---------- меню ----------
 
-void outputWordCounts(const std::unordered_map<std::string, std::vector<int>>& index,
-    const std::vector<std::string>& keys,
-    std::ostream& os = std::cout) {
-    for (auto& k : keys)
-        os << k << " - " << index.at(k).size() << "\n";
+void printMenu() {
+    std::cout << "\n========== МЕНЮ ==========\n"
+        << "1. Анализ текста (Война и мир)\n"
+        << "2. Задание 3a: квадраты простых чисел\n"
+        << "3. Задание 3b: нечётные по возрастанию, чётные по убыванию\n"
+        << "4. Задание 3c: уникальные в диапазоне\n"
+        << "0. Выход\n"
+        << "Выбор: ";
 }
-
-void runWordCount() {
-    const char* inPath = "C:/ОРАЛЬНЫЕ_УТЕХИ/3_курс_1_семестр/programming_technology_first_term/war_and_peace.txt";
-
-    std::ifstream fin(inPath, std::ios::binary | std::ios::ate);
-    if (!fin) { std::cerr << "Файл не найден: " << inPath << "\n"; return; }
-
-    std::streamsize size = fin.tellg();
-    fin.seekg(0, std::ios::beg);
-    std::string text((size_t)size, '\0');
-    fin.read(&text[0], size);
-    fin.close();
-
-    toLowerInPlace(text);
-
-    std::unordered_map<std::string, std::vector<int>> index;
-    int totalWords = 0;
-    buildIndex(text, index, totalWords);
-    auto keys = sortedKeys(index);
-
-    std::cout << "Всего слов: " << totalWords
-        << ", уникальных: " << index.size() << "\n\n";
-    std::cout << "----- Подсчёт слов -----\n";
-    outputWordCounts(index, keys);
-}
-
-// ==================== ЗАДАНИЕ 2: ИНДЕКСАЦИЯ ПОЗИЦИЙ ====================
-
-void outputWordPositions(const std::unordered_map<std::string, std::vector<int>>& index,
-    const std::vector<std::string>& keys,
-    std::ostream& os = std::cout) {
-    for (auto& k : keys) {
-        os << k << " - ";
-        const auto& v = index.at(k);
-        for (size_t j = 0; j < v.size(); ++j) {
-            if (j) os << ", ";
-            os << "позиция №" << v[j];
-        }
-        os << "\n";
-    }
-}
-
-void runWordPositions() {
-    const char* inPath = "C:/ОРАЛЬНЫЕ_УТЕХИ/3_курс_1_семестр/programming_technology_first_term/war_and_peace.txt";
-
-    std::ifstream fin(inPath, std::ios::binary | std::ios::ate);
-    if (!fin) { std::cerr << "Файл не найден: " << inPath << "\n"; return; }
-
-    std::streamsize size = fin.tellg();
-    fin.seekg(0, std::ios::beg);
-    std::string text((size_t)size, '\0');
-    fin.read(&text[0], size);
-    fin.close();
-
-    toLowerInPlace(text);
-
-    std::unordered_map<std::string, std::vector<int>> index;
-    int totalWords = 0;
-    buildIndex(text, index, totalWords);
-    auto keys = sortedKeys(index);
-
-    std::cout << "Всего слов: " << totalWords
-        << ", уникальных: " << index.size() << "\n\n";
-    std::cout << "----- Позиции слов -----\n";
-    outputWordPositions(index, keys);
-}
-
-// ==================== ЗАДАНИЕ 3: STL algorithm ====================
-
-// 3a. Простые числа в квадрат
-void squarePrimes(std::vector<int>& v) {
-    std::transform(v.begin(), v.end(), v.begin(), [](int x) {
-        return isPrime(x) ? x * x : x;
-        });
-}
-
-// 3b. Нечётные ↑, затем чётные ↓
-void sortOddAscEvenDesc(std::vector<int>& v) {
-    std::sort(v.begin(), v.end(), [](int a, int b) {
-        if (a % 2 != b % 2) return (a % 2) > (b % 2);
-        if (a % 2 != 0)     return a < b;
-        return a > b;
-        });
-}
-
-// 3c. Уникальные элементы в диапазоне
-std::vector<int> uniqueInRange(const std::vector<int>& v, int low, int high) {
-    std::vector<int> result;
-    std::copy_if(v.begin(), v.end(), std::back_inserter(result),
-        [low, high](int x) { return x >= low && x <= high; });
-    std::sort(result.begin(), result.end());
-    result.erase(std::unique(result.begin(), result.end()), result.end());
-    return result;
-}
-
-void task3a() {
-    std::cout << "\n--- 3a. Простые числа в квадрат ---\n";
-    std::vector<int> v = inputVector();
-    printVector(v, "Исходный вектор:       ");
-    squarePrimes(v);
-    printVector(v, "После преобразования:  ");
-}
-
-void task3b() {
-    std::cout << "\n--- 3b. Сортировка (нечётные ↑, чётные ↓) ---\n";
-    std::vector<int> v = inputVector();
-    printVector(v, "Исходный вектор:   ");
-    sortOddAscEvenDesc(v);
-    printVector(v, "После сортировки:  ");
-}
-
-void task3c() {
-    std::cout << "\n--- 3c. Уникальные элементы в диапазоне ---\n";
-    std::vector<int> v = inputVector();
-    int low, high;
-    std::cout << "Введите диапазон (low high): ";
-    std::cin >> low >> high;
-    printVector(v, "Исходный вектор:   ");
-    std::vector<int> unique = uniqueInRange(v, low, high);
-    std::cout << "Диапазон: [" << low << ", " << high << "]\n";
-    printVector(unique, "Уникальные:        ");
-}
-
-// ==================== ГЛАВНОЕ МЕНЮ ====================
 
 int main() {
-    setlocale(LC_ALL, "Russian");
+    setlocale(LC_ALL, "");
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 #endif
 
+    int choice;
     while (true) {
-        std::cout << "\n========================================\n";
-        std::cout << "            Лабораторная работа №1\n";
-        std::cout << "========================================\n";
-        std::cout << "--- Задание 1: Подсчёт слов в файле ---\n";
-        std::cout << "  1. Подсчёт уникальных слов (слово - счётчик)\n";
-        std::cout << "--- Задание 2: Индексация позиций ---\n";
-        std::cout << "  2. Позиции слов в файле (слово - позиция №...)\n";
-        std::cout << "--- Задание 3: STL algorithm ---\n";
-        std::cout << "  3. 3a. Простые числа в квадрат\n";
-        std::cout << "  4. 3b. Сортировка (нечётные ↑, чётные ↓)\n";
-        std::cout << "  5. 3c. Уникальные числа в диапазоне\n";
-        std::cout << "--- Выход ---\n";
-        std::cout << "  0. Выход\n";
-        std::cout << "Выберите пункт: ";
-
-        int choice;
-        std::cin >> choice;
-
-        if (std::cin.fail()) {
+        printMenu();
+        if (!(std::cin >> choice)) {
             std::cin.clear();
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            std::cout << "Ошибка ввода. Попробуйте снова.\n";
+            std::cin.ignore(10000, '\n');
             continue;
         }
+        std::cin.ignore(10000, '\n');   // съедаем '\n' после выбора
+
+        if (choice == 0) break;
 
         switch (choice) {
-        case 1: runWordCount();     break;
-        case 2: runWordPositions(); break;
-        case 3: task3a();           break;
-        case 4: task3b();           break;
-        case 5: task3c();           break;
-        case 0:
-            std::cout << "Выход из программы.\n";
-            return 0;
+        case 1:
+            runWordAnalysis();
+            break;
+
+        case 2: {
+            std::vector<int> v = inputVector();
+            std::cin.ignore(10000, '\n');   // <-- заодно
+            task3a_squarePrimes(v);
+            std::cout << "Результат: ";
+            printVector(v);
+            break;
+        }
+
+        case 3: {
+            std::vector<int> v = inputVector();
+            std::cin.ignore(10000, '\n');   // <-- заодно
+            task3b_oddAscEvenDesc(v);
+            std::cout << "Результат: ";
+            printVector(v);
+            break;
+        }
+
+        case 4: {
+            std::vector<int> v = inputVector();
+
+            // ← ВОТ ЭТА СТРОКА: убираем '\n' после ввода чисел
+            std::cin.ignore(10000, '\n');
+
+            int lo, hi;
+            std::cout << "Диапазон (например: 1 3 или [1, 3]): ";
+            if (!readRange(lo, hi)) {
+                std::cout << "Не удалось прочитать диапазон.\n";
+                break;
+            }
+
+            std::vector<int> r = task3c_uniqueInRange(v, lo, hi);
+            std::cout << "Результат: ";
+            printVector(r);
+            break;
+        }
+
         default:
-            std::cout << "Нет такого пункта. Попробуйте снова.\n";
+            std::cout << "Неверный выбор.\n";
         }
     }
+    return 0;
 }

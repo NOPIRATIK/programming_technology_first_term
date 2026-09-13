@@ -127,7 +127,18 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="file_io.cpp" />
+    <ClCompile Include="indexer.cpp" />
     <ClCompile Include="lab1.cpp" />
+    <ClCompile Include="stl_tasks.cpp" />
+    <ClCompile Include="text_utils.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="common.h" />
+    <ClInclude Include="file_io.h" />
+    <ClInclude Include="indexer.h" />
+    <ClInclude Include="stl_tasks.h" />
+    <ClInclude Include="text_utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
